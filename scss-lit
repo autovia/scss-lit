@@ -1,0 +1,62 @@
+#! /usr/bin/env node
+
+var sass = require('sass');
+const watcher = require('@parcel/watcher');
+const path = require('path');
+const fs = require('fs');
+
+const path_impl = process.platform === "win32" ? path.win32 : path.posix;
+
+let args = process.argv;
+if(args[0].endsWith('node')) {
+	args = args.slice(1)
+}
+
+if(args.length != 2 || args[1] === '--help') {
+	console.log("Usage:\n", path_impl.parse(args[0]).base, "<file|folder>");
+	process.exit(11);
+}
+
+const to_watch = args.pop();
+if(!fs.existsSync(to_watch)) {
+	console.log(to_watch, "does not exist\n");
+	process.exit(12);
+}
+
+(async() => {
+// Subscribe to events
+	const subscription = await watcher.subscribe(path.join(process.cwd(),to_watch), (err, events) => {
+		//console.log(events);
+		events.map(scss_lit);
+	});
+})();
+
+const scss_lit = function(value, idx, events) {
+	let p = path_impl.parse(value.path);
+	let header = "// GENERATED FILE!!!\n\nimport {css} from 'lit-element';\n\nexport const style = css\`";
+	let tail = "\`;";
+
+	if(p.ext === '.scss'){
+		let file = path.join(p.dir,p.name+'.css.js');
+		console.log("render: ",file);
+		let result = sass.renderSync({file: value.path, includePaths: ["node_modules"]});
+		console.log("result: ",result.css.length);
+		fs.writeFile(file, header+result.css.toString()+tail, function (err,data) {
+			if (err) {
+			  	return console.log(err);
+			} 
+			console.log("wrote : "+file);
+			//console.log(data);
+		});
+	}
+	/* To stdout
+	if(file.endsWith('.scss')){
+		let result = sass.renderSync({file: file, includePaths: ["node_modules"]});
+		process.stdout.write( "// GENERATED FILE!!!\n\nimport {css} from 'lit-element';\n\nexport const style = css\`");
+		process.stdout.write( result.css.toString());
+		process.stdout.write( "\`;");
+	} else {
+		process.stderr.write("Not a .scss file\n");
+	}
+	/*/
+}
